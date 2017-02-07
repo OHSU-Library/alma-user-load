@@ -1,0 +1,22 @@
+CREATE TABLE `libempdata` (
+  `UpdatedDate` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `CreatedDate` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `ID` varchar(9) NOT NULL,
+  `NetworkAccountName` varchar(255) DEFAULT NULL,
+  `FirstName` varchar(255) DEFAULT NULL,
+  `MiddleName` varchar(255) DEFAULT NULL,
+  `LastName` varchar(255) DEFAULT NULL,
+  `Address1` varchar(255) DEFAULT NULL,
+  `Address2` varchar(255) DEFAULT NULL,
+  `City` varchar(255) DEFAULT NULL,
+  `State` varchar(45) DEFAULT NULL,
+  `Zip` varchar(45) DEFAULT NULL,
+  `Email` varchar(255) DEFAULT NULL,
+  `Phone` varchar(45) DEFAULT NULL,
+  `PersonType` varchar(255) DEFAULT NULL,
+  `RefGroup` varchar(255) DEFAULT NULL,
+  `Department` varchar(255) DEFAULT NULL,
+  `StudentCollegeCode` tinyint(11) DEFAULT NULL,
+  PRIMARY KEY (`ID`),
+  UNIQUE KEY `ID_UNIQUE` (`ID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
