@@ -13,45 +13,52 @@ Requirements:
 
 ## Usage
 
- Script usage:
- alma_load_users.pl --function=[FULL|UPDATE|MAINTAIN|(USERID)] --commit=[YES/NO]
+alma_load_users.pl --function=[FULL|UPDATE|MAINTAIN|(USERID)] --commit=[YES/NO]
 
- alma_load_users.pl - Contains 4 different loading functions for pushing user data via
+alma_load_users.pl - Contains 4 different loading functions for pushing user data via
    the Alma users API:
 
- 1. FULL Load: Query our locally managed HR/Banner user DB libempdata and return ALL
+1. FULL Load: Query our locally managed HR/Banner user DB libempdata and return ALL
     users. Push data to API, overwriting all externally managed data fields.
     Runs Monthly. If user is not matched by employee_id or primary_id, then it is created
 	 via a POST call.
- 2. UPDATE Load: Query libempdata and return recently updated users from last 6 hours.
+2. UPDATE Load: Query libempdata and return recently updated users from last 6 hours.
     Push data to API, overwriting all externally managed data fields. If user is not 
 	 matched by employee_id or primary_id, then it is created via a POST call.
- 3. MAINTAIN Load: Query Analytics API Shared/Oregon Health and Science University/
+3. MAINTAIN Load: Query Analytics API Shared/Oregon Health and Science University/
     Recently_Modified_Users -- these are users modified within the last 24hrs. Query 
     libempdata and match users. Push data to API, overwriting all externally managed data
     fields.
- 4. (USERID) load: If you pass a primary_id (eg 'user@ohsu.edu') to the function call, 
+4. (USERID) load: If you pass a primary_id (eg 'user@ohsu.edu') to the function call, 
 	 then the MAINTAIN load code above will run for that user only. Useful to manually
 	 fix individual user accounts.
 
- commit=YES will push changes to Alma user DB via the API. Setting to NO will only
- 	 make query calls and report back without writing to DB.
+commit=YES will push changes to Alma user DB via the API. Setting to NO will only
+	 make query calls and report back without writing to DB.
 
 ## History
 
- -= 1/18/17 Changes =-
- Modified SQL procedure libempdata.SIS_XML_FULL to be overloadable and accept single
- letter character to limit full result set. Defaults to letter 'a' so a full (a-z) result
- set is returned if no value is passed. Passing a letter via shell CLI will limit result
- set, i.e. if you run --function=FULLm then m-z result set will be used during load.
+-= 7/20/17 Changes =-
+Added debug/error catch code on retrieving XML error payloads from API calls. There are
+random 'ROUTING_ERROR' and 'No response from Alma' failures that sometimes occur during
+normal script operation. Problem may be related to Oracle issues noted here: 
+https://developers.exlibrisgroup.com/forum/posts/list/158.page
+These errors only started appearing when switching from a user/pass auth to gateway auth
 
- -= 1/13/17 Changes =-
- Modified SQL to ensure POST/create new user sets preferred_language attribute during 
- POST. Otherwise error 401658 "General Error" will be thrown. This is related to updates 
- made to Alma for January 2017 Release.
+-= 6/20/17 Changes =-
+Switched Alma API from user/pass to gateway authentication.
 
- last updated: 01/18/17, np, OHSU Library
+-= 1/18/17 Changes =-
+Modified SQL procedure libempdata.SIS_XML_FULL to be overloadable and accept single
+letter character to limit full result set. Defaults to letter 'a' so a full (a-z) result
+set is returned if no value is passed. Passing a letter via shell CLI will limit result
+set, i.e. if you run --function=FULLm then m-z result set will be used during load.
 
+-= 1/13/17 Changes =-
+Modified SQL to ensure POST/create new user sets preferred_language attribute during 
+POST. Otherwise error 401658 "General Error" will be thrown. This is related to updates 
+made to Alma for January 2017 Release.
+ 
 ## Credits
 
 ## License

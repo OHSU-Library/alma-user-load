@@ -24,18 +24,7 @@
 # commit=YES will push changes to Alma user DB via the API. Setting to NO will only
 # 	 make query calls and report back without writing to DB.
 #
-# -= 1/18/17 Changes =-
-# Modified SQL procedure libempdata.SIS_XML_FULL to be overloadable and accept single
-# letter character to limit full result set. Defaults to letter 'a' so a full (a-z) result
-# set is returned if no value is passed. Passing a letter via shell CLI will limit result
-# set, i.e. if you run --function=FULLm then m-z result set will be used during load.
-#
-# -= 1/13/17 Changes =-
-# Modified SQL to ensure POST/create new user sets preferred_language attribute during 
-# POST. Otherwise error 401658 "General Error" will be thrown. This is related to updates 
-# made to Alma for January 2017 Release.
-#
-# last updated: 01/18/17, np, OHSU Library
+# last updated: 07/20/17, np, OHSU Library
 
 #----------------------------------------------------------------------------------------#
 # 										DECLARATIONS
@@ -44,33 +33,25 @@ use strict;
 use warnings;
 use utf8;
 
-use Cwd qw();
+use Config::General;
+use Data::Dumper;
 use DBI;
+use File::Basename;
 use Getopt::Long qw(GetOptions);
-use IO::Socket::SSL qw( SSL_VERIFY_NONE );
+use HTTP::Headers;
+use IO::Socket::SSL qw(SSL_VERIFY_NONE);
 use LWP::UserAgent;
 use Time::Piece;
+use Try::Tiny;
 use XML::Twig;
 
-#----------------------------------------------------------------------------------------#
-# 										  GLOBALS
-#----------------------------------------------------------------------------------------#
+# Get the location of where our script runs (modified $0 from cronjob):
+my $SCRIPT_DIR = dirname(__FILE__);
 
-# Alma API login/url:
-my $API_USER 		= 'AlmaSDK-alma_api-institutionCode-XXXXXXXXXXX';
-my $API_PASS 		= 'XXXXXXXXXX';
-my $API_BURL 		= 'https://naXX.alma.exlibrisgroup.com:443/almaws/v1/';
-my $API_AURL		= 'https://naXX.alma.exlibrisgroup.com:443/almaws/v1/';
-my $API_RTUserMod	= 'URL_path_to_Analytics_Report';
-
-# libempdata vars:
-my $SQL_SERVER		= 'sql_host';
-my $SQL_DB			= 'sql_db';
-my $SQL_USER		= 'sql_usr';
-my $SQL_PASS		= 'sql_pass';
-
-# error email notifications:
-#my $EMAIL_NOTIFY	= 'email@address.edu';
+# Read Config Options:
+my $CONF = Config::General->new(-ConfigFile 	=> 	"config.txt",
+								-ConfigPath 	=>	$SCRIPT_DIR);
+my %CONFIG = $CONF->getall;
 
 #----------------------------------------------------------------------------------------#
 # 											MAIN
@@ -79,7 +60,6 @@ my $SQL_PASS		= 'sql_pass';
 # exit and warn user if no function is given
 my $function;
 my $commit = 'NO';
-#my $error_email;
 
 GetOptions('function=s' => \$function, 
 		   'commit=s' => \$commit,) 
@@ -89,20 +69,15 @@ if ($function) {
 	#------------------------------------------------------------------------------------#
 	# 								   FILE HANDLING
 	#------------------------------------------------------------------------------------#
-	# get our current working dir:
-	my $xml_path = Cwd::cwd() . '/scripts/alma_load_users/xmls/';
-	my $log_path = Cwd::cwd() . '/scripts/alma_load_users/logs/';
+	# set our xml file working dir and logs dir:
+	my $xml_path = $CONFIG{XML_DIR};
+	my $log_path = $CONFIG{LOG_DIR};
 	
 	# timestamp:
 	my $ts = localtime->strftime('%Y%m%d_%H%M%S');
 	my $ds = localtime->strftime('%Y%m%d');
 	
 	# setup our file handler locations:
-	# - fh_log = logged success and errors from PUT/POST calls
-	# - fh_err = logged errors to be emailed by logrotate
-	# - fh_pre = xml user data retrieved from users API before modifications
-	# - fh_post = xml user data after merge with libempdata table data and before PUT/POST
-	# - fh_ret = xml user data returned from PUT of fh_post data
 	my $log_file = $log_path . $function . '_' . $ds . '.log';
 	my $err_file = $log_path . $function . '_' . $ds . '_errors.log';
 	my $pre_change = $xml_path . $function . '_' . $ts . '_pre_change.xml';
@@ -134,12 +109,6 @@ if ($function) {
 	
 	print $fh_log "Begin function " . $function . " on: " . localtime() . "\n";
 	print $fh_err "Begin function " . $function . " on: " . localtime() . "\n";
-	#print $fh_log "Sending logged success/errors to file: " . $log_file . "\n";
-	#print $fh_log "Sending logged errors to file: " . $err_file . "\n";
-	#print $fh_log "Sending pre_change data to file: " . $pre_change . "\n";
-	#print $fh_log "Sending post_change data to file: " . $post_change . "\n";
-	#print $fh_log "Sending return_change data to file: " . $return_change . "\n";
-	
 	print $fh_pre '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n";
 	print $fh_post '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n";
 	print $fh_return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n";
@@ -151,10 +120,16 @@ if ($function) {
 												IO::Socket::SSL::SSL_VERIFY_NONE, 
 												verify_hostname => 0});
 	
+	# global headers for Request objs:
+	my $header = HTTP::Headers->new('Authorization' => 	('apikey ' . $CONFIG{API_KEY}),
+									'content_type' 	=>	'application/xml;charset=UTF-8');
+	
 	# connect to libempdata:
-  	my $dbh = DBI->connect("DBI:mysql:database=" . $SQL_DB . ";host=" . $SQL_SERVER,
-                    		$SQL_USER, $SQL_PASS,
-                         	{'RaiseError' => 1});
+  	my $dbh = DBI->connect("DBI:mysql:database=" . $CONFIG{DATABASE}{DB} . 
+  						   	";host=" . $CONFIG{DATABASE}{HOST},
+                    	   	$CONFIG{DATABASE}{USER}, 
+                    	   	$CONFIG{DATABASE}{PASS},
+                           		{'RaiseError' => 1});
     
     # MySQL statement handler
     my $sth;
@@ -174,9 +149,7 @@ if ($function) {
 	}
 	elsif ($function eq 'MAINTAIN') {
 		# get list of modified users:
-		my $get = new HTTP::Request(GET =>($API_AURL . 'analytics/' . $API_RTUserMod));
-		$get->content_type('application/xml');
-		$get->authorization_basic($API_USER, $API_PASS);
+		my $get = new HTTP::Request("GET", ($CONFIG{API_BURL} . 'analytics/' . $CONFIG{API_RPTURL}), $header);
 		my $response = $ua->request($get);
 		
 		if ($response->is_success) {
@@ -196,8 +169,11 @@ if ($function) {
 		else {
 			# could not get list, report error and DIE:
 			my $error_string = "ERROR returning Analytics list: " . $response->status_line();
+			
+			#DEBUG:
 			#print $fh_log print_error($error_string, $response->content);
-			print $fh_log ($error_string . " (" . xml_err_num($response->content()) . ")\n");
+			
+			print $fh_log ($error_string . " (" . xml_err_num($response->content(), 'MAINTAIN') . ")\n");
 			print $fh_err print_error($error_string, $response->content) . "\n";
 			die "Ending function " . $function . " on: " . localtime() . "\n";
 		}
@@ -215,7 +191,7 @@ if ($function) {
 	$sth->finish;
 	$dbh->disconnect();
 	
-	print $fh_log "Number of records returned from " . $SQL_DB . " is: ", 0 + @{$users}, "\n";
+	print $fh_log "Number of records returned from " . $CONFIG{DATABASE}{DB} . " is: ", 0 + @{$users}, "\n";
 	
 	# our pre, post and return XML user data objs:
 	my $twig_pre = XML::Twig->new(
@@ -246,7 +222,7 @@ if ($function) {
 		my $new_user = 0;
 		
 		# construct API url, attempt to match on a)employee_id, b)student_id or c)primary_id:
-		my $apiurl = $API_BURL . 'users/';
+		my $apiurl = $CONFIG{API_BURL} . 'users/';
 		if ($employee_id) {
 			$apiurl = $apiurl . $employee_id . '?view=full';
 		}
@@ -254,20 +230,16 @@ if ($function) {
 			$apiurl = $apiurl . $student_id . '?view=full';
 		}
 		
-		#debug:
+		#DEBUG:
 		#print $apiurl . "\n";
 		
-		my $get = new HTTP::Request(GET =>($apiurl));
-		$get->content_type('application/xml');
-		$get->authorization_basic($API_USER, $API_PASS);
+		my $get = HTTP::Request->new("GET", $apiurl, $header);
 		my $response = $ua->request($get);
 		
 		# if employee or student id check fails, try primary identifier:
-		if ($response->is_error && xml_err_num($response->content) eq '401861') {
-			$apiurl = $API_BURL . 'users/' . $primary_id . '?view=full';
-			$get = new HTTP::Request(GET =>($apiurl));
-			$get->content_type('application/xml');
-			$get->authorization_basic($API_USER, $API_PASS);
+		if ($response->is_error && xml_err_num($response->content, $apiurl) eq '401861') {
+			$apiurl = $CONFIG{API_BURL} . 'users/' . $primary_id . '?view=full';
+			$get = new HTTP::Request("GET", $apiurl, $header);
 			$response = $ua->request($get);
 		}
 		
@@ -305,7 +277,7 @@ if ($function) {
 				$ident->parent->cut;
 			}
 			
-			#debug:
+			#DEBUG:
 			#print "\npre merge:\n";
 			#$twig->print;
 			#print "\n";
@@ -314,13 +286,13 @@ if ($function) {
 			my %tags;
 			++$tags{$_->tag} for $twig->findnodes('/user/*');
 			{
-				#debug:
+				#DEBUG:
 				#print "pre parse twig2\n";
 				#print Dumper(\@{$u}[3]);
 				
 				my $twig2 = XML::Twig->parse(@{$u}[3]);
 				
-				#debug:
+				#DEBUG:
 				#print "during merge:\n";
 				#$twig2->print;
 				#print "\n";
@@ -344,7 +316,7 @@ if ($function) {
 				$twig2->purge;
 			}
 			
-			# debug:
+			#DEBUG:
 			#print "post merge:\n";
 			#$twig->set_pretty_print('indented');
 			#$twig->print;
@@ -357,17 +329,21 @@ if ($function) {
 			# update user:
 			$new_user = 0;
 		}
-		elsif (xml_err_num($response->content) eq '401861') {
+		elsif (xml_err_num($response->content, $apiurl) eq '401861') {
 			# user not found by primary id match, it *should* be safe to create in DB:
 			$new_user = 1;
 		}
 		else {
 			# could not get user data for some reason, report error:
-			my $error_string = "ERROR retaining barcode for user employee_id=$employee_id, student_id=$student_id, primary_id=$primary_id: " . $response->status_line() .
-				"ERROR --> will skip PUT attempt for user!";
+			my $error_string = "ERROR retaining barcode for user employee_id=$employee_id, student_id=$student_id, primary_id=$primary_id: " . $response->status_line() . 
+				"\nERROR --> will skip PUT attempt for user!";
+				
+			#DEBUG:
 			#print $fh_log print_error($error_string, $response->content);
-			print $fh_log ($error_string . " (" . xml_err_num($response->content()) . ")\n");
+			
+			print $fh_log ($error_string . " (" . xml_err_num($response->content(), $apiurl) . ")\n");
 			print $fh_err print_error($error_string, $response->content) . "\n";
+			
 			#$error_email = $error_email . print_error($error_string, $response->content) . "\n";
 			
 			# blank user ids so user is skipped during COMMIT phase:
@@ -386,10 +362,10 @@ if ($function) {
 				# PUT or POST user?
 				my $put;
 				if ($new_user) {
-					$put = new HTTP::Request(POST =>($API_BURL . 'users'));
+					$put = new HTTP::Request("POST", ($CONFIG{API_BURL} . 'users'), $header);
 				}
 				else {
-					$put = new HTTP::Request(PUT =>($apiurl . '&override=user_group'));
+					$put = new HTTP::Request("PUT", ($apiurl . '&override=user_group'), $header);
 				}
 				use bytes;
 				my $length = length(@{$u}[3]);
@@ -402,9 +378,7 @@ if ($function) {
 		
 				# attempt to PUT/POST user data:
 				$put->content(@{$u}[3]);
-				$put->content_type('application/xml;charset=UTF-8');
 				$put->content_length($length);
-				$put->authorization_basic($API_USER, $API_PASS);
 				my $put_res = $ua->request($put);
 	
 				if ($put_res->is_success) {
@@ -420,25 +394,24 @@ if ($function) {
 						print $fh_log "SUCCESS updating user employee_id=$employee_id, student_id=$student_id, primary_id=$primary_id: " . $put_res->status_line() . "\n";
 					}
 				}
-				elsif (xml_err_num($put_res->content) eq '401858') {
+				elsif (xml_err_num($put_res->content, @{$u}[3]) eq '401858') {
 					#"The external id in DB does not fit the given value in xml - external id cannot be updated."
 					#-- This usually means the current user's <external_id> correlates to a non-existant User Identifier Type so it cannot be overwritten
 					#-- even if the newly PUTed <external_id> does exist. So, let's try removing the current user obj and POSTing the new synchronized one:
-					my $del = new HTTP::Request(DELETE => ($apiurl));
-					$del->authorization_basic($API_USER, $API_PASS);
+					my $del = new HTTP::Request("DELETE", $apiurl, $header);
 					my $del_res = $ua->request($del);
+					
+					#DEBUG:
 					#print $del_res->status_line() . "\n";
 					
-					my $post = new HTTP::Request(POST =>($API_BURL . 'users'));
+					my $post = new HTTP::Request("POST", ($CONFIG{API_BURL} . 'users'), $header);
 					use bytes;
 					$length = length(@{$u}[3]);
 					use utf8;
 		
 					# attempt to PUT user data:
 					$post->content(@{$u}[3]);
-					$post->content_type('application/xml;charset=UTF-8');
 					$post->content_length($length);
-					$post->authorization_basic($API_USER, $API_PASS);
 					$put_res = $ua->request($post);
 	
 					if ($put_res->is_success) {
@@ -450,23 +423,31 @@ if ($function) {
 						print $fh_log "SUCCESS updating user employee_id=$employee_id, student_id=$student_id, primary_id=$primary_id: " . $put_res->status_line() . "\n";
 					}
 				}
-				elsif (xml_err_num($put_res->content) eq '4018994') {
+				elsif (xml_err_num($put_res->content, @{$u}[3]) eq '4018994') {
 					#Request cannot contain two identifiers with the same value (probably incorrect primary ident):
 					my $error_string = "ERROR updating user employee_id=$employee_id, student_id=$student_id, primary_id=$primary_id: " . $put_res->status_line();
+					
+					#DEBUG:
 					#print $fh_log print_error($error_string, $put_res->content);
-					print $fh_log ($error_string . " (" . xml_err_num($put_res->content()) . ")\n");
+					
+					print $fh_log ($error_string . " (" . xml_err_num($put_res->content(), @{$u}[3]) . ")\n");
 					
 					# email user to manually fix:
 					print $fh_err print_error($error_string, $put_res->content);
 					print $fh_err "POSSIBLE RESOLUTION: Please ensure the primary_id for this user is set to: $primary_id and attempt to repair this user by running:\n$0 --function=$primary_id --commit=YES\n\n";
+					
 					#$error_email = $error_email . print_error($error_string, $put_res->content);
 					#$error_email = $error_email . "POSSIBLE RESOLUTION: Please ensure the primary_id for this user is set to: $primary_id and attempt to repair this user by running:\n$0 --function=$primary_id --commit=YES\n";
 				}
 				else {
 					my $error_string = "ERROR updating user employee_id=$employee_id, student_id=$student_id, primary_id=$primary_id: " . $put_res->status_line();
+					
+					#DEBUG:
 					#print $fh_log print_error($error_string, $put_res->content);
-					print $fh_log ($error_string . " (" . xml_err_num($put_res->content()) . ")\n");
+					
+					print $fh_log ($error_string . " (" . xml_err_num($put_res->content(), @{$u}[3]) . ")\n");
 					print $fh_err print_error($error_string, $put_res->content) . "\n";
+					
 					#$error_email = $error_email . print_error($error_string, $put_res->content);
 				}
 			}
@@ -513,17 +494,24 @@ else {
 sub print_error {
 	my $str_message = $_[0];
 	my $xml_obj = $_[1];
+	my ($error_code, $error_message, $tracking_id) = ("", "", "");
 	
-	my ($error_code, $error_message, $tracking_id);
-	my $twig_error = XML::Twig->new(
-		twig_handlers => { 
-			q(web_service_result/errorList/error/errorCode) => sub { $error_code = $_->text },
-			q(web_service_result/errorList/error/errorMessage) => sub { $error_message = $_->text },
-			q(web_service_result/errorList/error/trackingId) => sub { $tracking_id = $_->text },
-		}   
-	);
-	$twig_error->parse($xml_obj);
-	$twig_error->purge;
+	try {
+		my $twig_error = XML::Twig->new(
+			twig_handlers => { 
+				q(web_service_result/errorList/error/errorCode) => sub { $error_code = $_->text },
+				q(web_service_result/errorList/error/errorMessage) => sub { $error_message = $_->text },
+				q(web_service_result/errorList/error/trackingId) => sub { $tracking_id = $_->text },
+			}   
+		);
+		$twig_error->parse($xml_obj);
+		$twig_error->purge;
+	} catch {
+		#DEBUG:
+		$error_code = "-1";
+		$error_message = Dumper(\$xml_obj);
+		$tracking_id = "-1";
+	};
 	
 	$str_message = $str_message . "\n";
 	$str_message = $str_message . "ERROR code = $error_code\n";
@@ -535,15 +523,23 @@ sub print_error {
 # return Alma API error code number:
 sub xml_err_num {
 	my $xml_obj = $_[0];
+	my $context = $_[1];
 	my $error_code;
 	
-	my $twig_error = XML::Twig->new(
-		twig_handlers => {
-			q(web_service_result/errorList/error/errorCode) => sub { $error_code = $_->text },
-		}
-	);
-	$twig_error->parse($xml_obj);
-	$twig_error->purge;
+	try {
+		my $twig_error = XML::Twig->new(
+			twig_handlers => {
+				q(web_service_result/errorList/error/errorCode) => sub { $error_code = $_->text },
+			}
+		);
+		$twig_error->parse($xml_obj);
+		$twig_error->purge;
+	} catch {
+		#DEBUG:
+		print localtime();
+		print "------ERROR:\n" . Dumper(\$xml_obj);
+		print "------CONTEXT:\n" . $context;
+	};
 	
 	return $error_code;
 }
