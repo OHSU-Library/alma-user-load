@@ -1,0 +1,10 @@
+alma_load_users_deletepost20170721.pl
+alma_load_users_dev.pl
+alma_load_users_UserPass.pl
+config_dev.txt
+config.txt
+*.log
+logs/
+logs_dev/
+xmls/
+xmls_dev/
