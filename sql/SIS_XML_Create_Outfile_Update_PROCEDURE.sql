@@ -45,7 +45,7 @@ SET @sql =
 		'<contact_info>', 
 		'<addresses>',
 		IF ((school_description != '' AND school_line1 != ''), CONCAT(
-			'<address', IF(work_description = '', ' preferred=\"true\"', ''), ' segment_type=\"External\">',
+			'<address segment_type=\"External\">',
 			'<line1>', XML_Encode(school_line1), '</line1>',
 			'<line2>', XML_Encode(school_line2), '</line2>',
 			'<city>', XML_Encode(school_city), '</city>',
@@ -57,7 +57,7 @@ SET @sql =
 			'</address>'),
 		''),
 		IF ((work_description != '' AND work_line1 != ''), CONCAT(
-			'<address preferred=\"true\" segment_type=\"External\">',
+			'<address segment_type=\"External\">',
 			'<line1>', XML_Encode(work_line1), '</line1>',
 			'<line2>', XML_Encode(work_line2), '</line2>',
 			'<city>', XML_Encode(work_city), '</city>',
@@ -71,7 +71,7 @@ SET @sql =
 		'</addresses>',
 		'<emails>',
 		IF((school_description != '' AND school_email != ''), CONCAT(
-			'<email', IF(work_description = '', ' preferred=\"true\"', ''), ' segment_type=\"External\">',
+			'<email segment_type=\"External\">',
 			'<email_address>', XML_Encode(school_email), '</email_address>',
 			'<email_types>', 
 			'<email_type>school</email_type>',
@@ -79,7 +79,7 @@ SET @sql =
 			'</email>'),
 		''),
 		IF((work_description != '' AND work_email != ''), CONCAT(
-			'<email preferred=\"true\" segment_type=\"External\">',
+			'<email segment_type=\"External\">',
 			'<email_address>', XML_Encode(work_email), '</email_address>',
 			'<email_types>', 
 			'<email_type>work</email_type>',
@@ -89,7 +89,7 @@ SET @sql =
 		'</emails>',
 		'<phones>',
 		IF((school_description != '' AND school_phone != ''), CONCAT(
-		  '<phone', IF(work_description = '', ' preferred=\"true\"', ''), ' segment_type=\"External\">',
+		  '<phone segment_type=\"External\">',
 		  '<phone_number>', XML_Encode(school_phone), '</phone_number>',
 		  '<phone_types>',
 		  '<phone_type>home</phone_type>',
@@ -97,7 +97,7 @@ SET @sql =
 		  '</phone>'),
 		''),
 		IF((work_description != '' AND work_phone != ''), CONCAT(
-		  '<phone preferred=\"true\" segment_type=\"External\">',
+		  '<phone segment_type=\"External\">',
 		  '<phone_number>', XML_Encode(work_phone), '</phone_number>',
 		  '<phone_types>',
 		  '<phone_type>office</phone_type>',

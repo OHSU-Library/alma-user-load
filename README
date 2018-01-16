@@ -3,8 +3,7 @@
 ## Installation
 
 Requirements:
-- Perl v5.18.2+
-- Perl Libs:
+-- Config::General
 -- DBI
 -- LWP
 -- Time::Piece
@@ -13,37 +12,51 @@ Requirements:
 
 ## Usage
 
-alma_load_users.pl --function=[FULL|UPDATE|MAINTAIN|(USERID)] --commit=[YES/NO]
+alma_load_users.pl --function=[FULL|FULL_STUDENTS|UPDATE|MAINTAIN|(USERID)] --commit=[YES/NO]
 
-alma_load_users.pl - Contains 4 different loading functions for pushing user data via
-   the Alma users API:
+alma_load_users.pl - Contains 5 different loading functions for pushing user data via
+  the Alma users API:
 
 1. FULL Load: Query our locally managed HR/Banner user DB libempdata and return ALL
-    users. Push data to API, overwriting all externally managed data fields.
-    Runs Monthly. If user is not matched by employee_id or primary_id, then it is created
-	 via a POST call.
-2. UPDATE Load: Query libempdata and return recently updated users from last 6 hours.
-    Push data to API, overwriting all externally managed data fields. If user is not 
-	 matched by employee_id or primary_id, then it is created via a POST call.
-3. MAINTAIN Load: Query Analytics API Shared/Oregon Health and Science University/
-    Recently_Modified_Users -- these are users modified within the last 24hrs. Query 
-    libempdata and match users. Push data to API, overwriting all externally managed data
-    fields.
-4. (USERID) load: If you pass a primary_id (eg 'user@ohsu.edu') to the function call, 
-	 then the MAINTAIN load code above will run for that user only. Useful to manually
-	 fix individual user accounts.
+   users. Push data to API, overwriting all externally managed data fields.
+   Runs Monthly. If user is not matched by employee_id or primary_id, then it is created
+   via a POST call.
+2. FULL_STUDENTS Load: Same as FULL above, but will only work with student (BANNER)
+   data.
+3. UPDATE Load: Query libempdata and return recently updated users from last 6 hours.
+   Push data to API, overwriting all externally managed data fields. If user is not 
+   matched by employee_id or primary_id, then it is created via a POST call.
+4. MAINTAIN Load: Query Analytics API Shared/Oregon Health and Science University/
+   Recently_Modified_Users -- these are users modified within the last 24hrs. Query 
+   libempdata and match users. Push data to API, overwriting all externally managed data
+   fields.
+5. (USERID) load: If you pass a primary_id (eg 'user@ohsu.edu') to the function call, 
+   then the MAINTAIN load code above will run for that user only. Useful to manually
+   fix individual user accounts.
 
 commit=YES will push changes to Alma user DB via the API. Setting to NO will only
-	 make query calls and report back without writing to DB.
+   make query calls and report back without writing to DB.
+
+last updated: 01/11/18, np, OHSU Library
 
 ## History
+
+-= 1/11/18 Changes =-
+Added XML parsing block to check if there are any internally managed fields in 
+contact_info when PUTing a user. If so, retain these fields. Generally an internally
+managed field will be set as "preferred". The new block checks to ensure that a preferred 
+field is set for each of the address, email and phone blocks. If none is set, the 
+externally managed field is to set "preferred".
 
 -= 7/20/17 Changes =-
 Added debug/error catch code on retrieving XML error payloads from API calls. There are
 random 'ROUTING_ERROR' and 'No response from Alma' failures that sometimes occur during
-normal script operation. Problem may be related to Oracle issues noted here: 
+normal script operation. These errors only started appearing when switching from a 
+user/pass auth to gateway auth. Problem may be related to Oracle issues noted here: 
+
 https://developers.exlibrisgroup.com/forum/posts/list/158.page
-These errors only started appearing when switching from a user/pass auth to gateway auth
+
+Added FULL_STUDENTS function: same as FULL but only runs against BANNER data.
 
 -= 6/20/17 Changes =-
 Switched Alma API from user/pass to gateway authentication.

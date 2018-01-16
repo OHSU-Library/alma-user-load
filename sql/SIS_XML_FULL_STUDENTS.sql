@@ -1,4 +1,4 @@
-CREATE DEFINER=`libadm`@`10.%` PROCEDURE `SIS_XML_FULL`(IN pid_letter CHAR(1))
+CREATE DEFINER=`libadm`@`10.%` PROCEDURE `SIS_XML_FULL_STUDENTS`(IN pid_letter CHAR(1))
 BEGIN
 
 IF pid_letter = '' THEN SET pid_letter = 'a'; END IF;
@@ -28,11 +28,11 @@ CONCAT(	'<user>',
 		'</user_group>',
 		'<expiry_date>', IF(school_description = '' AND work_description = 'EX-EMPLOYEE', Date_Format(UpdatedDate, '%Y-%m-%d'), 		/* Ex-Employee */
 						 IF(work_description != '' AND work_description != 'EX-EMPLOYEE', '2099-12-31',									/* Employee Expiration */
-						 IF(MONTH(CURDATE()) <= '09', CONCAT(YEAR(CURDATE()), '-08-31'), CONCAT(YEAR(CURDATE())+1, '-08-31')))), 		/* Student Expiration */
+						 IF(MONTH(CURDATE()) <= '07', CONCAT(YEAR(CURDATE()), '-08-31'), CONCAT(YEAR(CURDATE())+1, '-08-31')))), 		/* Student Expiration */
 		'</expiry_date>',
 		'<purge_date>', IF(school_description = '' AND work_description = 'EX-EMPLOYEE', Date_Format(UpdatedDate, '%Y-%m-%d'), 			/* Ex-Employee */
 						IF(work_description != '' AND work_description != 'EX-EMPLOYEE', '2099-12-31',									/* Employee Expiration */
-						IF(MONTH(CURDATE()) <= '09', CONCAT(YEAR(CURDATE()), '-08-31'), CONCAT(YEAR(CURDATE())+1, '-08-31')))), 		/* Student Expiration */
+						IF(MONTH(CURDATE()) <= '07', CONCAT(YEAR(CURDATE()), '-08-31'), CONCAT(YEAR(CURDATE())+1, '-08-31')))), 		/* Student Expiration */
 		'</purge_date>',
         '<preferred_language desc="English">en</preferred_language>',
 		'<account_type>EXTERNAL</account_type>',
@@ -129,5 +129,6 @@ CONCAT(	'<user>',
 		'</user>') AS 'user_xml'
 FROM ohsu_users_combined
 WHERE primary_id REGEXP CONCAT('^[', pid_letter, '-z.].+\@ohsu\.edu$')
+	AND student_id != ''
 ORDER BY primary_id;
 END

@@ -1,30 +1,33 @@
 #!/usr/bin/perl
 #
 # Script usage:
-# alma_load_users.pl --function=[FULL|UPDATE|MAINTAIN|(USERID)] --commit=[YES/NO]
+# alma_load_users.pl --function=[FULL|FULL_STUDENTS|UPDATE|MAINTAIN|(USERID)] --commit=[YES/NO]
 #
-# alma_load_users.pl - Contains 4 different loading functions for pushing user data via
+# alma_load_users.pl - Contains 5 different loading functions for pushing user data via
 #   the Alma users API:
 #
 # 1. FULL Load: Query our locally managed HR/Banner user DB libempdata and return ALL
 #    users. Push data to API, overwriting all externally managed data fields.
 #    Runs Monthly. If user is not matched by employee_id or primary_id, then it is created
 #	 via a POST call.
-# 2. UPDATE Load: Query libempdata and return recently updated users from last 6 hours.
+# 2. FULL_STUDENTS Load: Same as FULL above, but will only work with student (BANNER)
+#	 data.
+# 3. UPDATE Load: Query libempdata and return recently updated users from last 6 hours.
 #    Push data to API, overwriting all externally managed data fields. If user is not 
 #	 matched by employee_id or primary_id, then it is created via a POST call.
-# 3. MAINTAIN Load: Query Analytics API Shared/Oregon Health and Science University/
+# 4. MAINTAIN Load: Query Analytics API Shared/Oregon Health and Science University/
 #    Recently_Modified_Users -- these are users modified within the last 24hrs. Query 
 #    libempdata and match users. Push data to API, overwriting all externally managed data
 #    fields.
-# 4. (USERID) load: If you pass a primary_id (eg 'user@ohsu.edu') to the function call, 
+# 5. (USERID) load: If you pass a primary_id (eg 'user@ohsu.edu') to the function call, 
 #	 then the MAINTAIN load code above will run for that user only. Useful to manually
 #	 fix individual user accounts.
 #
 # commit=YES will push changes to Alma user DB via the API. Setting to NO will only
 # 	 make query calls and report back without writing to DB.
 #
-# last updated: 07/20/17, np, OHSU Library
+# last updated: 01/11/18, np, OHSU Library
+# Please see README for latest release notes and update information
 
 #----------------------------------------------------------------------------------------#
 # 										DECLARATIONS
@@ -63,7 +66,7 @@ my $commit = 'NO';
 
 GetOptions('function=s' => \$function, 
 		   'commit=s' => \$commit,) 
-	or die "Script usage: $0 --function=[FULL(X)|UPDATE|MAINTAIN|(USERID)] --commit=[YES/NO]\n";
+	or die "Script usage: $0 --function=[FULL(X)|FULL_STUDENTS(X)|UPDATE|MAINTAIN|(USERID)] --commit=[YES/NO]\n";
 
 if ($function) {
 	#------------------------------------------------------------------------------------#
@@ -141,8 +144,14 @@ if ($function) {
 	if ($function eq 'FULL') {
 		$sth=$dbh->prepare("call SIS_XML_FULL('')") or die $DBI::err.": ".$DBI::errstr;
 	}
-	elsif (my ($letter) = $function =~ /FULL([a-z.])/) {
-		$sth=$dbh->prepare("call SIS_XML_FULL('" . $letter . "')") or die $DBI::err.": ".$DBI::errstr;
+	elsif (my ($let_all) = $function =~ /FULL([a-z.])/) {
+		$sth=$dbh->prepare("call SIS_XML_FULL('" . $let_all . "')") or die $DBI::err.": ".$DBI::errstr;
+	}
+	elsif ($function eq 'FULL_STUDENTS') {
+		$sth=$dbh->prepare("call SIS_XML_FULL_STUDENTS('')") or die $DBI::err.": ".$DBI::errstr;
+	}
+	elsif (my ($let_stu) = $function =~ /FULL_STUDENTS([a-z.])/) {
+		$sth=$dbh->prepare("call SIS_XML_FULL_STUDENTS('" . $let_stu . "')") or die $DBI::err.": ".$DBI::errstr;
 	}
 	elsif ($function eq 'UPDATE') {
 		$sth=$dbh->prepare("call SIS_XML_UPDATE('')") or die $DBI::err.": ".$DBI::errstr;
@@ -182,7 +191,7 @@ if ($function) {
 		$sth=$dbh->prepare("call SIS_XML_MAINTAIN('" . $function . "')") or die $DBI::err.": ".$DBI::errstr;
 	}
 	else {
-		die "Script usage: $0 --function=[FULL(x)|UPDATE|MAINTAIN|(USERID)] --commit=[YES/NO]\n";
+		die "Script usage: $0 --function=[FULL(x)|FULL_STUDENTS(X)|UPDATE|MAINTAIN|(USERID)] --commit=[YES/NO]\n";
 	}
 	
 	# get data from DB:
@@ -266,8 +275,11 @@ if ($function) {
 					'account_type' => 1,
 					'external_id' => 1,
 					'status' => 1,
-					'contact_info' => 1,
-					'user_statistics' => 1
+					'contact_info/addresses/address[@segment_type="External"]' => 1,
+					'contact_info/emails/email[@segment_type="External"]' => 1,
+					'contact_info/phones/phone[@segment_type="External"]' => 1,
+					'user_statistics' => 1,
+					'user_roles' => 1
 				}
 			);
 			$twig->parse($response->content);
@@ -313,6 +325,35 @@ if ($function) {
 					}
 				}
 				
+				# copy ext address/phone/email from libempdata:
+				for my $ident ($twig2->findnodes('//contact_info/addresses/address[@segment_type="External"]')) {
+					unless ($tags{$ident->tag}) {
+						# check if a preferred address exists, if not set EXT data to preferred:
+						if (!$twig->findnodes('/user/contact_info/addresses/address[@preferred="true"]')) {
+							$ident->set_att('preferred' => 'true');
+						}
+						$ident->cut;
+						$ident->paste($twig->findnodes('/user/contact_info/addresses/'));
+					}
+				}
+				for my $ident ($twig2->findnodes('//contact_info/emails/email[@segment_type="External"]')) {
+					unless ($tags{$ident->tag}) {
+						if (!$twig->findnodes('/user/contact_info/emails/email[@preferred="true"]')) {
+							$ident->set_att('preferred' => 'true');
+						}
+						$ident->cut;
+						$ident->paste($twig->findnodes('/user/contact_info/emails/'));
+					}
+				}
+				for my $ident ($twig2->findnodes('//contact_info/phones/phone[@segment_type="External"]')) {
+					unless ($tags{$ident->tag}) {
+						if (!$twig->findnodes('/user/contact_info/phones/phone[@preferred="true"]')) {
+							$ident->set_att('preferred' => 'true');
+						}
+						$ident->cut;
+						$ident->paste($twig->findnodes('/user/contact_info/phones/'));
+					}
+				}
 				$twig2->purge;
 			}
 			
@@ -335,7 +376,7 @@ if ($function) {
 		}
 		else {
 			# could not get user data for some reason, report error:
-			my $error_string = "ERROR retaining barcode for user employee_id=$employee_id, student_id=$student_id, primary_id=$primary_id: " . $response->status_line() . 
+			my $error_string = "ERROR on GET call for user employee_id=$employee_id, student_id=$student_id, primary_id=$primary_id: " . $response->status_line() . 
 				"\nERROR --> will skip PUT attempt for user!";
 				
 			#DEBUG:
@@ -481,7 +522,7 @@ if ($function) {
 	#}
 }
 else {
-	die "Script usage: $0 --function=[FULL(x)|UPDATE|MAINTAIN|(USERID)] --commit=[YES/NO]\n";
+	die "Script usage: $0 --function=[FULL(x)|FULL_STUDENTS(X)|UPDATE|MAINTAIN|(USERID)] --commit=[YES/NO]\n";
 }
 
 #----------------------------------------------------------------------------------------#
